@@ -1,3 +1,8 @@
-# Deep Dungeoneers
+# Adversarial Adventures
 
-Deep learning algorithms to generate images of fantasy heroes.
+- Author: Alan Leggitt
+- Created: May 23rd, 2022
+
+
+Creating fantasy heroes using generative adversarial networks
+
