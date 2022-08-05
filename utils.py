@@ -1,4 +1,8 @@
+import cv2
 import glob
+from matplotlib.collections import PatchCollection
+from matplotlib.patches import Rectangle
+import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import torch
@@ -16,6 +20,126 @@ labels = np.array([i.split('/')[-1].split('_')[:3] for i in img_files])
 species = np.unique(labels[:, 0]).tolist()
 classes = np.unique(labels[:, 1]).tolist()
 genders = np.unique(labels[:, 2]).tolist()
+
+keypoint_names = {
+    0: 'nose',
+    1: 'right eye',
+    2: 'left eye',
+    3: 'right ear',
+    4: 'left ear',
+    5: 'right shoulder',
+    6: 'left shoulder',
+    7: 'right elbow',
+    8: 'left elbow',
+    9: 'right hand',
+    10: 'left hand',
+    11: 'right hip',
+    12: 'left hip',
+    13: 'right knee',
+    14: 'left knee',
+    15: 'right foot',
+    16: 'left foot'
+}
+
+
+# left/right defined from view perspective
+edges = [
+    (0, 1),    # nose to right eye
+    (0, 2),    # nose to left eye
+    (2, 4),    # left eye to left ear
+    (1, 3),    # right eye to right ear
+    (6, 8),    # left shoulder to left elblow
+    (8, 10),   # left elbow to left hand
+    (5, 7),    # right shoulder to right elbow
+    (7, 9),    # right elbow to right hand
+    (5, 11),   # right shoulder to right hip
+    (11, 13),  # right hip to right knee
+    (13, 15),  # right knee to right foot
+    (6, 12),   # left shoulder to left hip
+    (12, 14),  # left hip to left knee
+    (14, 16),  # left knee to left foot
+    (5, 6),    # right shoulder to left shoulder
+    (11, 12),  # right hip to left hip
+]
+
+class Pose:
+    '''
+    
+    A pose detected from an Image
+    Contains Image information, 17 keypoints, a bounding box
+    
+    
+    Attributes
+    - Z (Image data tensor)
+    - keypoints
+    - boxes
+    
+    
+    Methods
+    - plot 
+    - resize
+    
+    '''
+    def __init__(self, index=0, **kwargs):
+        for k, v in kwargs.items():
+            if type(v) == torch.Tensor:
+                v = v.cpu().numpy()[index]
+            setattr(self, k, v)
+        self.dict = kwargs
+        self.box = self.boxes
+        self.Z = cv2.imread(self.filename)[:, :, ::-1]
+        
+    def plot(self, ax=None, show=False):
+        if ax is None:
+            fig, ax = plt.subplots()
+        
+        # plot image
+        ax.imshow(self.Z)
+        
+        # plot bounding box
+        x0, y0, x1, y1 = self.box
+        rect = Rectangle((x0, y0), x1-x0, y1-y0, alpha=0.1)
+        ax.add_patch(rect)
+        
+        # plot keypoints
+        x = self.keypoints[:, 0]
+        y = self.keypoints[:, 1]
+        for (i, j) in edges:
+            ax.plot([x[i], x[j]], [y[i], y[j]], 'ro-')
+            
+        if show:
+            plt.show()
+        
+    def resize(self, w=128, h=128):
+        # transform bounding box and keypoints
+        H, W, _ = self.Z.shape
+        
+        new_box = []
+        x0, y0, x1, y1 = self.box
+        
+        # compute box for cropping image
+        w_p = x1 - x0
+        h_p = y1 - y0
+        
+        i0 = max(int(x0 - w_p/4), 0)
+        i1 = min(int(x1 + w_p/4), W)
+        
+        j0 = max(int(y0 - h_p/4), 0)
+        j1 = min(int(y1 + h_p/4), H)
+        
+        # rescale bounding box coordinates
+        x0 = (x0-i0) / (i1-i0) * w
+        y0 = (y0-j0) / (j1-j0) * h
+        x1 = (x1-i0) / (i1-i0) * w
+        y1 = (y1-j0) / (j1-j0) * h
+        self.box = np.r_[x0, y0, x1, y1]
+        
+        self.keypoints[:, 0] = (self.keypoints[:, 0] - i0) / (i1-i0) * w
+        self.keypoints[:, 1] = (self.keypoints[:, 1] - j0) / (j1-j0) * h
+
+        # resize image
+        self.Z = cv2.resize(self.Z[j0:j1, i0:i1], (w, h))
+        self.box
 
 class ImSet(Dataset):
     def __init__(self, img_path=img_path):
